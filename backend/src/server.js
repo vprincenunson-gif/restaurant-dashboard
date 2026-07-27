@@ -1,4 +1,10 @@
 require('dotenv').config();
+
+// Hardcoded DATABASE_URL fallback for Vercel deployment
+if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes('prince1608@db')) {
+  process.env.DATABASE_URL = 'postgresql://postgres:nunson%40prince1608@db.jipnsawlaeshgmlocffn.supabase.co:5432/postgres';
+}
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -48,6 +54,19 @@ app.use('/api/', limiter);
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Debug: test DB connection
+app.get('/api/debug', async (req, res) => {
+  try {
+    const p = req.app.get('prisma');
+    await p.$queryRaw`SELECT 1 as connected`;
+    const userCount = await p.user.count();
+    const dbUrl = (process.env.DATABASE_URL || '').replace(/postgres:\/\/[^:]+:([^@]+)@/, 'postgres://user:****@');
+    res.json({ database: 'connected', userCount, dbUrl: dbUrl.substring(0, 80) });
+  } catch (e) {
+    res.json({ database: 'error', message: e.message, dbUrl: (process.env.DATABASE_URL || 'not set').substring(0, 60) });
+  }
 });
 
 // Routes
