@@ -1,10 +1,5 @@
 require('dotenv').config();
 
-// Hardcoded DATABASE_URL fallback for Vercel deployment
-if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes('prince1608@db')) {
-  process.env.DATABASE_URL = 'postgresql://postgres:nunson%40prince1608@db.jipnsawlaeshgmlocffn.supabase.co:5432/postgres';
-}
-
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
