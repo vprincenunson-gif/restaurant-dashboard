@@ -53,12 +53,77 @@ app.get('/api/health', (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 
-// Seed endpoint (one-time use)
+// Seed endpoint (triggers seeding via HTTP to Vercel Postgres-compatible route)
 app.post('/api/seed', async (req, res) => {
   try {
-    const { execSync } = require('child_process');
-    execSync('node prisma/seed.js', { cwd: __dirname + '/..', env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }, stdio: 'pipe' });
-    res.json({ message: 'Database seeded successfully!' });
+    const bcrypt = require('bcryptjs');
+    const p = req.app.get('prisma');
+    const hashedPassword = await bcrypt.hash('password123', 12);
+
+    // Clean existing data
+    await p.activityLog.deleteMany(); await p.sale.deleteMany(); await p.orderItem.deleteMany();
+    await p.order.deleteMany(); await p.customer.deleteMany(); await p.staff.deleteMany();
+    await p.inventoryItem.deleteMany(); await p.menuItem.deleteMany(); await p.menuCategory.deleteMany();
+    await p.table.deleteMany(); await p.user.deleteMany();
+
+    // Users
+    const admin = await p.user.create({ data: { name:'Admin User', email:'admin@restaurant.com', password:hashedPassword, role:'admin', phone:'+1-555-0100' }});
+    await p.user.create({ data: { name:'Sarah Manager', email:'sarah@restaurant.com', password:hashedPassword, role:'manager', phone:'+1-555-0101' }});
+    await p.user.create({ data: { name:'John Waiter', email:'john@restaurant.com', password:hashedPassword, role:'staff', phone:'+1-555-0102' }});
+
+    // Tables
+    for (const t of [{number:1,capacity:2,location:'window'},{number:2,capacity:2,location:'window'},{number:3,capacity:4,location:'indoor'},{number:4,capacity:4,location:'indoor'},{number:5,capacity:6,location:'indoor'},{number:6,capacity:4,location:'outdoor'},{number:7,capacity:4,location:'outdoor'},{number:8,capacity:8,location:'indoor'},{number:9,capacity:2,location:'bar'},{number:10,capacity:6,location:'window'}])
+      await p.table.create({ data: t });
+
+    // Menu categories
+    const cats = await Promise.all([
+      p.menuCategory.create({ data:{name:'Appetizers',description:'Starters',sortOrder:1}}),
+      p.menuCategory.create({ data:{name:'Main Course',description:'Entrees',sortOrder:2}}),
+      p.menuCategory.create({ data:{name:'Pasta',description:'Pasta',sortOrder:3}}),
+      p.menuCategory.create({ data:{name:'Beverages',description:'Drinks',sortOrder:4}}),
+      p.menuCategory.create({ data:{name:'Desserts',description:'Sweets',sortOrder:5}}),
+    ]);
+
+    // Menu items
+    const items = await Promise.all([
+      p.menuItem.create({ data:{name:'Bruschetta',price:8.99,categoryId:cats[0].id,isPopular:true}}),
+      p.menuItem.create({ data:{name:'Calamari',price:12.99,categoryId:cats[0].id,isPopular:true}}),
+      p.menuItem.create({ data:{name:'Garlic Bread',price:5.99,categoryId:cats[0].id}}),
+      p.menuItem.create({ data:{name:'Grilled Salmon',price:24.99,categoryId:cats[1].id,isPopular:true}}),
+      p.menuItem.create({ data:{name:'Steak Frites',price:32.99,categoryId:cats[1].id}}),
+      p.menuItem.create({ data:{name:'Chicken Parmesan',price:18.99,categoryId:cats[1].id,isPopular:true}}),
+      p.menuItem.create({ data:{name:'Spaghetti Carbonara',price:16.99,categoryId:cats[2].id,isPopular:true}}),
+      p.menuItem.create({ data:{name:'Fettuccine Alfredo',price:15.99,categoryId:cats[2].id}}),
+      p.menuItem.create({ data:{name:'Soft Drink',price:2.99,categoryId:cats[3].id}}),
+      p.menuItem.create({ data:{name:'Coffee',price:3.99,categoryId:cats[3].id}}),
+      p.menuItem.create({ data:{name:'Tiramisu',price:8.99,categoryId:cats[4].id,isPopular:true}}),
+      p.menuItem.create({ data:{name:'Panna Cotta',price:7.99,categoryId:cats[4].id}}),
+    ]);
+
+    // Staff
+    await p.staff.create({ data:{name:'John Waiter',email:'john@restaurant.com',role:'waiter',shift:'morning',salary:32000}});
+    await p.staff.create({ data:{name:'Maria Chef',role:'chef',shift:'evening',salary:48000}});
+    await p.staff.create({ data:{name:'David Host',role:'host',shift:'morning',salary:28000}});
+
+    // Inventory
+    await p.inventoryItem.create({ data:{name:'Tomatoes',category:'produce',quantity:25,unit:'kg',minStock:10}});
+    await p.inventoryItem.create({ data:{name:'Chicken Breast',category:'meat',quantity:15,unit:'kg',minStock:10}});
+    await p.inventoryItem.create({ data:{name:'Lettuce',category:'produce',quantity:3,unit:'kg',minStock:5}});
+
+    // Customers
+    const [c1] = await Promise.all([
+      p.customer.create({ data:{name:'Alice Johnson',email:'alice@email.com',totalVisits:15,totalSpent:450.5,lastVisit:new Date(),isVip:true}}),
+      p.customer.create({ data:{name:'Bob Smith',email:'bob@email.com',totalVisits:8,totalSpent:210,lastVisit:new Date()}}),
+      p.customer.create({ data:{name:'Carol Davis',email:'carol@email.com',totalVisits:22,totalSpent:890.75,lastVisit:new Date(),isVip:true}}),
+    ]);
+
+    // Sample orders
+    for (let i = 0; i < 5; i++) {
+      const subtotal = items[i].price * 2; const tax = subtotal * 0.05; const sc = subtotal * 0.10;
+      await p.order.create({ data:{orderNumber:i+1,tableId:(await p.table.findFirst({where:{number:i+1}})).id,customerId:c1.id,userId:admin.id,status:'completed',type:'dine-in',subtotal,tax,serviceCharge:sc,total:subtotal+tax+sc,paymentMethod:'cash',paymentStatus:'paid',items:{create:[{menuItemId:items[i].id,quantity:2,unitPrice:items[i].price,subtotal:items[i].price*2}]}}});
+    }
+
+    res.json({ message: 'Database seeded successfully! Demo accounts: admin@restaurant.com / password123' });
   } catch (err) {
     res.status(500).json({ error: 'Seed failed', details: err.message });
   }
