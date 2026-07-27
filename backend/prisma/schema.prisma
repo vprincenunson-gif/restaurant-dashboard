@@ -23,6 +23,7 @@ model User {
   staff        Staff?
   orders       Order[]
   sales        Sale[]
+  activityLogs ActivityLog[]
 }
 
 model Table {
