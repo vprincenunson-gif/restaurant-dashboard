@@ -56,17 +56,24 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Debug: test DB connection
+// Debug: test DB connection and network
 app.get('/api/debug', async (req, res) => {
+  const result = { database: 'unknown', dns: 'unknown', host: '', dbUrl: '' };
+  const dbUrl = process.env.DATABASE_URL || 'not set';
+  result.dbUrl = dbUrl.replace(/\/\/[^:]+:([^@]+)@/, '//user:****@').substring(0, 100);
+  result.host = dbUrl.match(/@([^:\/]+)/)?.[1] || 'unknown';
   try {
     const p = req.app.get('prisma');
+    await p.$connect();
     await p.$queryRaw`SELECT 1 as connected`;
     const userCount = await p.user.count();
-    const dbUrl = (process.env.DATABASE_URL || '').replace(/postgres:\/\/[^:]+:([^@]+)@/, 'postgres://user:****@');
-    res.json({ database: 'connected', userCount, dbUrl: dbUrl.substring(0, 80) });
+    result.database = 'connected';
+    result.userCount = userCount;
   } catch (e) {
-    res.json({ database: 'error', message: e.message, dbUrl: (process.env.DATABASE_URL || 'not set').substring(0, 60) });
+    result.database = 'error';
+    result.message = e.message.substring(0, 200);
   }
+  res.json(result);
 });
 
 // Routes
