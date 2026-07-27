@@ -52,6 +52,17 @@ app.get('/api/health', (req, res) => {
 
 // Routes
 app.use('/api/auth', authRoutes);
+
+// Seed endpoint (one-time use)
+app.post('/api/seed', async (req, res) => {
+  try {
+    const { execSync } = require('child_process');
+    execSync('node prisma/seed.js', { cwd: __dirname + '/..', env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }, stdio: 'pipe' });
+    res.json({ message: 'Database seeded successfully!' });
+  } catch (err) {
+    res.status(500).json({ error: 'Seed failed', details: err.message });
+  }
+});
 app.use('/api/orders', orderRoutes);
 app.use('/api/tables', tableRoutes);
 app.use('/api/inventory', inventoryRoutes);
